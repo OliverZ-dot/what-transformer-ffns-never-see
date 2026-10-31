@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Transformer FFNs Never See</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,550;0,6..72,650;1,6..72,450&family=Outfit:wght@300;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #f4f0e8;
+    --ink: #1c1915;
+    --muted: #6f675e;
+    --line: #e3dcd0;
+    --card: #fffcf7;
+    --a: #c2410c;
+    --a-soft: #f4d3c4;
+    --c: #1e4d78;
+    --c-soft: #d5e2ee;
+    --idle: #8a837a;
+    --fixed: #3f3a34;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1200px 500px at 80% -10%, #efe4d4 0%, transparent 55%),
+      var(--paper);
+    color: var(--ink);
+    font-family: Outfit, "Segoe UI", sans-serif;
+    font-weight: 300;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 28px 72px; }
+  .kicker {
+    margin: 0 0 14px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  h1 {
+    margin: 0;
+    max-width: 16ch;
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 550;
+    font-size: clamp(40px, 6vw, 68px);
+    line-height: 0.98;
+    letter-spacing: -0.03em;
+  }
+  .deck {
+    max-width: 62ch;
+    margin: 22px 0 0;
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 450;
+    font-size: 21px;
+    line-height: 1.45;
+    color: #3a342c;
+  }
+  .authors {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px 32px;
+    list-style: none;
+    margin: 28px 0 0;
+    padding: 0;
+  }
+  .authors li { min-width: 180px; }
+  .authors strong { display: block; font-weight: 560; font-size: 15px; }
+  .authors span { color: var(--muted); font-size: 13px; }
+  figure.demo {
+    margin: 48px 0 0;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 22px;
+    box-shadow: 0 18px 50px rgba(60, 40, 20, 0.05);
+    overflow: hidden;
+  }
+  .demo-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  .demo-bar p { margin: 0; font-size: 13px; color: var(--muted); }
+  .controls { display: flex; align-items: center; gap: 12px; }
+  button.play {
+    border: 1px solid var(--line);
+    background: #fff;
+    border-radius: 999px;
+    padding: 7px 14px;
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+    color: var(--ink);
+  }
+  button.play:hover { border-color: #c9bfb2; }
+  input[type="range"] {
+    width: 160px;
+    accent-color: var(--fixed);
+  }
+  .boards {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(280px, 1fr) minmax(260px, 0.95fr);
+    gap: 12px;
+    padding: 14px;
+  }
+  .panel {
+    background: #faf7f2;
+    border: 1px solid #efe8dc;
+    border-radius: 16px;
+    padding: 16px 14px 14px;
+    min-width: 0;
+  }
+  .panel h3 {
+    margin: 0;
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 550;
+    font-size: 22px;
+    letter-spacing: -0.02em;
+  }
+  .panel .sub { margin: 4px 0 12px; color: var(--muted); font-size: 13px; }
+  .cols {
+    display: grid;
+    grid-template-columns: 28px 1fr 78px 44px;
+    gap: 8px;
+    margin-bottom: 6px;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .tok {
+    display: grid;
+    grid-template-columns: 28px 1fr 78px 44px;
+    gap: 8px;
+    align-items: center;
+    margin-bottom: 7px;
+  }
+  .tok b { font-family: Newsreader, Georgia, serif; font-size: 16px; font-weight: 550; }
+  .vec, .as { gap: 3px; min-width: 0; }
+  .vec, .y8 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .as { display: flex; flex-wrap: wrap; }
+  .as.y8 { display: grid; grid-template-columns: repeat(4, minmax(3.4em, 1fr)); }
+  .vec i, .as i {
+    font-style: normal;
+    font-variant-numeric: tabular-nums;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    box-sizing: border-box;
+    min-width: 0;
+    padding: 3px 2px;
+    text-align: center;
+    font-size: 9px;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+  .meter { height: 7px; background: #efe8dc; border-radius: 99px; overflow: hidden; }
+  .meter span { display: block; height: 100%; width: 0; border-radius: 99px; background: #cfc6ba; }
+  .pct { font-variant-numeric: tabular-nums; font-size: 12px; text-align: right; color: var(--muted); }
+  .ydims { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .ycell {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    min-width: 0;
+    padding: 6px 4px 5px;
+  }
+  .ycell span { display: block; color: var(--muted); font-size: 10px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .ycell strong {
+    display: block;
+    font-family: Newsreader, Georgia, serif;
+    font-size: 14px;
+    font-weight: 550;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.15;
+    letter-spacing: -0.03em;
+  }
+  .lock {
+    margin: 12px 0 0;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  #src-mid { margin: 8px 0 0; font-family: Newsreader, Georgia, serif; font-size: 20px; }
+  .route {
+    background: #fff;
+    border-radius: 14px;
+    padding: 10px 12px 12px;
+    margin-bottom: 8px;
+  }
+  .route p { margin: 2px 0; }
+  .route .who { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+  .route .mix { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+  .route .as i { flex: 1 1 3.2em; font-size: 10px; line-height: 1.2; padding: 3px 1px; }
+  .route .trace { font-family: Newsreader, Georgia, serif; font-size: 18px; }
+  .same { margin: 4px 0 0; text-align: center; color: var(--muted); font-size: 13px; }
+  figcaption {
+    padding: 4px 22px 20px;
+    color: var(--muted);
+    font-size: 14px;
+    max-width: 85ch;
+  }
+  figcaption strong { color: var(--ink); font-weight: 560; }
+  .notes {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px 48px;
+    margin-top: 36px;
+  }
+  .notes h2 {
+    margin: 0 0 8px;
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 550;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+  }
+  .notes p { margin: 0; color: #3f3832; font-size: 16px; }
+  .formula {
+    margin-top: 28px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 18px;
+    font-family: Newsreader, Georgia, serif;
+    font-size: 18px;
+  }
+  .formula span {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 6px 14px;
+  }
+  footer {
+    margin-top: 48px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  @media (max-width: 800px) {
+    .notes, .boards { grid-template-columns: 1fr; }
+    .demo-bar { flex-direction: column; align-items: flex-start; }
+    .controls { flex-wrap: wrap; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="kicker">NeurIPS 2026</p>
+  <h1>What Transformer FFNs never see</h1>
+  <p class="deck">A feed-forward layer only receives a mixture of value vectors. Two attention patterns can manufacture the exact same mixture, so the layer cannot tell which tokens it used. A short trace of the attention weights makes those patterns separable again.</p>
+  <ul class="authors">
+    <li><strong>Tinghe Zhang</strong><span>Tsinghua University<br>Shanghai Qizhi Institute</span></li>
+    <li><strong>Yucheng Xiao</strong><span>HITSZ</span></li>
+    <li><strong>Alex Lamb</strong><span>Tsinghua University<br>Shanghai Qizhi Institute</span></li>
+  </ul>
+
+  <figure class="demo">
+    <div class="demo-bar">
+      <p id="status">Playing. Attention is moving along a direction the mixture cannot see.</p>
+      <div class="controls">
+        <label for="slider" class="kicker" style="margin:0">Route</label>
+        <input id="slider" type="range" min="-100" max="100" value="80" aria-label="Slide between two attention routes that share one mixture">
+        <button class="play" id="play" type="button">Pause</button>
+      </div>
+    </div>
+    <div class="boards" id="boards">
+      <section class="panel" aria-label="Tokens, value vectors, and attention">
+        <h3>Six tokens</h3>
+        <p class="sub">Value vector and current attention weight.</p>
+        <div class="cols"><span></span><span>value v</span><span></span><span>α</span></div>
+        <div id="tokens"></div>
+      </section>
+      <section class="panel" aria-label="Mixture seen by the feed-forward layer">
+        <h3>What the FFN receives</h3>
+        <p class="sub">y = Σ αᵢ vᵢ</p>
+        <div class="ydims" id="ydims"></div>
+        <p id="src-mid"></p>
+        <p class="lock" id="drift">Largest change in y: 0.000</p>
+      </section>
+      <section class="panel" aria-label="Mixture plus a routing trace">
+        <h3>Same y, plus a trace</h3>
+        <article class="route" id="rowA"></article>
+        <article class="route" id="rowC"></article>
+        <p class="same">same mixture, different trace</p>
+      </section>
+    </div>
+    <figcaption>
+      <strong>Six tokens, one 8-dimensional mixture.</strong>
+      The value vectors are fixed. The slider moves attention along a null direction of V, so every attention score changes and the dominant token switches between T1 and T3. All eight entries of y stay put, because that direction is invisible to the mixture. The panel on the right keeps y and adds which token peaked.
+    </figcaption>
+  </figure>
+
+  <div class="formula">
+    <span>y = Vα</span>
+    <span>α and α′ can satisfy Vα = Vα′</span>
+    <span>ỹ = y + W r(α)</span>
+  </div>
+
+  <section class="notes">
+    <div>
+      <h2>The collision is structural.</h2>
+      <p>Each head compresses n attention weights into a shorter value mixture. When the sequence is longer than that mixture, different routes are forced to share an output. The feed-forward layer then sees identical inputs and must produce identical outputs. Making the network deeper, wider, or more trained does not put the discarded weights back.</p>
+    </div>
+    <div>
+      <h2>The missing trace is already computed.</h2>
+      <p>The attention weights exist earlier in the same forward pass. Route-Aware FFN keeps a few summaries of them — how peaked the distribution is, and which positions carry the mass — and adds that vector to the mixture before the feed-forward layer. The original mixture stays. The routes no longer look the same.</p>
+    </div>
+  </section>
+  
+</div>
+
+<script>
+const names = ["T1", "T2", "T3", "T4", "T5", "T6"];
+const values = [
+  [0.62, -0.18, 1.05, 0.27, -0.73, 0.39, -0.25, 0.91],
+  [0.31, -0.64, -0.22, 0.83, 0.15, -0.46, 0.52, -0.18],
+  [0.48, 0.07, 0.88, 0.51, -0.41, 0.11, 0.16, 0.74],
+  [-0.55, 0.41, 0.36, -0.19, 0.68, -0.08, -0.33, 0.26],
+  [0.17, 0.93, -0.47, 0.44, -0.29, 0.21, 0.71, -0.63],
+  [-0.27, 1.23, 0.62, -1.30, -0.72, 1.43, -1.37, 0.32]
+];
+const alpha0 = [0.19, 0.16, 0.23, 0.11, 0.18, 0.13];
+const delta = [0.105, -0.035, -0.105, 0.035, 0.035, -0.035];
+const COL = { 0: "#c2410c", 2: "#1e4d78" };
+const SOFT = { 0: "#f8e6dc", 2: "#e4eef6" };
+
+const tokenRoot = document.getElementById("tokens");
+const ydims = document.getElementById("ydims");
+const srcMid = document.getElementById("src-mid");
+const drift = document.getElementById("drift");
+const rowA = document.getElementById("rowA");
+const rowC = document.getElementById("rowC");
+const slider = document.getElementById("slider");
+const playBtn = document.getElementById("play");
+const status = document.getElementById("status");
+
+const fills = [];
+const pcts = [];
+const rows = [];
+
+names.forEach((name, i) => {
+  const row = document.createElement("div");
+  row.className = "tok";
+  const vec = values[i].map(v => `<i>${v.toFixed(2)}</i>`).join("");
+  row.innerHTML = `<b>${name}</b><span class="vec">${vec}</span><span class="meter"><span></span></span><span class="pct"></span>`;
+  tokenRoot.appendChild(row);
+  rows.push(row);
+  fills.push(row.querySelector(".meter span"));
+  pcts.push(row.querySelector(".pct"));
+});
+
+const dim = values[0].length;
+for (let d = 0; d < dim; d++) {
+  const cell = document.createElement("div");
+  cell.className = "ycell";
+  cell.innerHTML = `<span>y${d + 1}</span><strong>0.000</strong>`;
+  ydims.appendChild(cell);
+}
+const yRead = [...ydims.querySelectorAll("strong")];
+
+function mix(t) {
+  return alpha0.map((a, i) => a + t * delta[i]);
+}
+function mixture(a) {
+  const y = Array(dim).fill(0);
+  for (let i = 0; i < a.length; i++) {
+    for (let d = 0; d < dim; d++) y[d] += a[i] * values[i][d];
+  }
+  return y;
+}
+function argmax(a) {
+  let k = 0;
+  for (let i = 1; i < a.length; i++) if (a[i] > a[k]) k = i;
+  return k;
+}
+function chips(nums, cls) {
+  return `<span class="${cls}">${nums.map(v => `<i>${v}</i>`).join("")}</span>`;
+}
+const y0 = mixture(alpha0);
+const endA = mix(1);
+const endC = mix(-1);
+function routeCard(el, title, color, border, a, token) {
+  el.style.border = `1px solid ${border}`;
+  el.innerHTML = `
+    <p class="who" style="color:${color}">${title}</p>
+    <p class="mix">α ${chips(a.map(v => v.toFixed(3)), "as")}</p>
+    <p class="mix">y ${chips(y0.map(v => v.toFixed(3)), "as y8")}</p>
+    <p class="trace" style="color:${color}">peaked on ${token}</p>
+  `;
+}
+routeCard(rowA, "route peaked on T1", COL[0], "#e7cbbd", endA, "T1");
+routeCard(rowC, "route peaked on T3", COL[2], "#c9d7e4", endC, "T3");
+
+function render(t) {
+  const a = mix(t);
+  const y = mixture(a);
+  const top = argmax(a);
+  const peaked = Math.abs(a[0] - a[2]) > 0.04;
+  const color = peaked ? COL[top] : "#8a837a";
+
+  a.forEach((v, i) => {
+    const dominant = peaked && i === top;
+    fills[i].style.width = `${Math.max(6, (v / 0.36) * 100)}%`;
+    fills[i].style.background = dominant ? color : "#cfc6ba";
+    pcts[i].textContent = v.toFixed(3);
+    pcts[i].style.color = dominant ? color : "#6f675e";
+    rows[i].style.opacity = dominant || !peaked ? "1" : "0.72";
+    rows[i].querySelectorAll(".vec i").forEach(cell => {
+      cell.style.borderColor = dominant ? color : "#e4ddd2";
+      cell.style.background = dominant ? SOFT[top] : "#fff";
+    });
+  });
+
+  y.forEach((v, d) => { yRead[d].textContent = v.toFixed(3); });
+  const shift = Math.max(...y.map((v, d) => Math.abs(v - y0[d])));
+  drift.textContent = `Largest change in y: ${shift.toFixed(3)}`;
+  srcMid.textContent = peaked ? `dominant token ${names[top]}` : "no single dominant token";
+  srcMid.style.color = color;
+
+  const favorA = 0.38 + 0.62 * Math.max(0, Math.min(1, (t + 0.15) / 0.5));
+  const favorC = 0.38 + 0.62 * Math.max(0, Math.min(1, (-t + 0.15) / 0.5));
+  rowA.style.opacity = favorA.toFixed(3);
+  rowC.style.opacity = favorC.toFixed(3);
+
+  const yNow = y.map(v => v.toFixed(3)).join(", ");
+  status.textContent = peaked
+    ? `Attention peaked on ${names[top]}. y = (${yNow}) is unchanged.`
+    : `Attention is nearly tied. y = (${yNow}) is unchanged.`;
+}
+
+let playing = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let scrubbing = false;
+let resumeAt = 0;
+let start = performance.now();
+
+function currentT(now) {
+  if (!playing) return Number(slider.value) / 100;
+  const phase = (now - start) / 1600;
+  return Math.sin(phase);
+}
+
+function frame(now) {
+  if (scrubbing && now > resumeAt) scrubbing = false;
+  if (!scrubbing && playing) {
+    const t = currentT(now);
+    slider.value = String(Math.round(t * 100));
+    render(t);
+  }
+  requestAnimationFrame(frame);
+}
+
+slider.addEventListener("input", () => {
+  playing = false;
+  playBtn.textContent = "Play";
+  scrubbing = true;
+  resumeAt = performance.now() + 1e9;
+  render(Number(slider.value) / 100);
+});
+
+playBtn.addEventListener("click", () => {
+  playing = !playing;
+  playBtn.textContent = playing ? "Pause" : "Play";
+  if (playing) {
+    const t = Number(slider.value) / 100;
+    const phase = Math.asin(Math.max(-1, Math.min(1, t)));
+    start = performance.now() - phase * 1600;
+    scrubbing = false;
+  }
+});
+
+render(playing ? 0 : 0.8);
+if (!playing) slider.value = "80";
+playBtn.textContent = playing ? "Pause" : "Play";
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
