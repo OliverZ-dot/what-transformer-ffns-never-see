@@ -239,8 +239,83 @@
     color: var(--muted);
     font-size: 13px;
   }
+  .recover { margin-top: 56px; }
+  .recover h2 {
+    margin: 0 0 8px;
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 550;
+    font-size: 28px;
+    letter-spacing: -0.02em;
+  }
+  .recover .lead {
+    margin: 0 0 18px;
+    max-width: 68ch;
+    color: #3f3832;
+    font-size: 16px;
+  }
+  .statgrid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 14px 14px 0;
+  }
+  .stat {
+    background: #faf7f2;
+    border: 1px solid #efe8dc;
+    border-radius: 16px;
+    padding: 14px 14px 12px;
+    min-width: 0;
+  }
+  .stat .lbl {
+    margin: 0;
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .stat strong {
+    display: block;
+    margin-top: 6px;
+    font-family: Newsreader, Georgia, serif;
+    font-weight: 550;
+    font-size: 28px;
+    letter-spacing: -0.03em;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.1;
+  }
+  .stat .hint { margin: 6px 0 0; color: var(--muted); font-size: 13px; min-height: 2.6em; }
+  .stat .meter { margin-top: 10px; }
+  .rail {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 8px;
+    padding: 14px;
+  }
+  .pill {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 10px 8px 8px;
+    text-align: center;
+    min-width: 0;
+  }
+  .pill b {
+    display: block;
+    font-family: Newsreader, Georgia, serif;
+    font-size: 18px;
+    font-weight: 550;
+  }
+  .pill span {
+    display: block;
+    margin-top: 2px;
+    color: var(--muted);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+  .recover figcaption { padding-top: 0; }
   @media (max-width: 800px) {
-    .notes, .boards { grid-template-columns: 1fr; }
+    .notes, .boards, .statgrid { grid-template-columns: 1fr; }
+    .rail { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .demo-bar { flex-direction: column; align-items: flex-start; }
     .controls { flex-wrap: wrap; }
   }
@@ -312,7 +387,47 @@
       <p>The attention weights exist earlier in the same forward pass. Route-Aware FFN keeps a few summaries of them — how peaked the distribution is, and which positions carry the mass — and adds that vector to the mixture before the feed-forward layer. The original mixture stays. The routes no longer look the same.</p>
     </div>
   </section>
-  
+
+  <section class="recover" id="summaries">
+    <h2>Four summaries recover the route.</h2>
+    <p class="lead">They are computed from the same attention as the figure above. The mixture stays on one vector. The summaries move with the route, and name which tokens carry it.</p>
+    <figure class="demo">
+      <div class="demo-bar">
+        <p>Tied to the route slider above.</p>
+      </div>
+      <div class="statgrid">
+        <article class="stat">
+          <p class="lbl">Peak weight</p>
+          <strong id="s-peak">0.000</strong>
+          <p class="hint" id="s-peak-hint"></p>
+          <div class="meter"><span id="s-peak-bar"></span></div>
+        </article>
+        <article class="stat">
+          <p class="lbl">Entropy</p>
+          <strong id="s-ent">0.000</strong>
+          <p class="hint">Lower when attention concentrates on fewer tokens.</p>
+          <div class="meter"><span id="s-ent-bar"></span></div>
+        </article>
+        <article class="stat">
+          <p class="lbl">Sparsity</p>
+          <strong id="s-sp">0 of 6</strong>
+          <p class="hint">Tokens carrying more than an even share of the mass.</p>
+          <div class="meter"><span id="s-sp-bar"></span></div>
+        </article>
+        <article class="stat">
+          <p class="lbl">Top positions</p>
+          <strong id="s-top">T1</strong>
+          <p class="hint" id="s-top-hint">The three tokens that hold the most attention.</p>
+        </article>
+      </div>
+      <div class="rail" id="rail"></div>
+      <figcaption>
+        <strong>The route comes back as four numbers.</strong>
+        Peak weight is the largest attention score. Entropy measures how spread out the scores are. Sparsity counts tokens above an even share. The top three positions say where the mass sits. Slide the route above and these change between T1 and T3, while every entry of y stays put.
+      </figcaption>
+    </figure>
+  </section>
+
 </div>
 
 <script>
@@ -432,6 +547,7 @@ function render(t) {
   status.textContent = peaked
     ? `Attention peaked on ${names[top]}. y = (${yNow}) is unchanged.`
     : `Attention is nearly tied. y = (${yNow}) is unchanged.`;
+  renderStats(t);
 }
 
 let playing = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -473,6 +589,72 @@ playBtn.addEventListener("click", () => {
     scrubbing = false;
   }
 });
+
+const rail = document.getElementById("rail");
+const pills = names.map((name) => {
+  const el = document.createElement("div");
+  el.className = "pill";
+  el.innerHTML = `<b>${name}</b><span></span>`;
+  rail.appendChild(el);
+  return el;
+});
+const sPeak = document.getElementById("s-peak");
+const sPeakHint = document.getElementById("s-peak-hint");
+const sPeakBar = document.getElementById("s-peak-bar");
+const sEnt = document.getElementById("s-ent");
+const sEntBar = document.getElementById("s-ent-bar");
+const sSp = document.getElementById("s-sp");
+const sSpBar = document.getElementById("s-sp-bar");
+const sTop = document.getElementById("s-top");
+const evenShare = 1 / names.length;
+const maxEntropy = Math.log(names.length);
+
+function entropyOf(a) {
+  let h = 0;
+  for (let i = 0; i < a.length; i++) if (a[i] > 0) h -= a[i] * Math.log(a[i]);
+  return h;
+}
+function topThree(a) {
+  return a.map((v, i) => [v, i]).sort((p, q) => q[0] - p[0] || p[1] - q[1]).slice(0, 3);
+}
+function renderStats(t) {
+  const a = mix(t);
+  const top = argmax(a);
+  const peaked = Math.abs(a[0] - a[2]) > 0.04;
+  const color = peaked ? COL[top] : "#8a837a";
+  const ranked = topThree(a);
+  const rankOf = new Map(ranked.map((pair, rank) => [pair[1], rank]));
+  const hot = a.filter(v => v > evenShare).length;
+
+  sPeak.textContent = Math.max(...a).toFixed(3);
+  sPeak.style.color = color;
+  sPeakHint.textContent = peaked ? `Largest score, on ${names[top]}.` : "Largest score. No single dominant token.";
+  sPeakBar.style.width = `${Math.max(8, (Math.max(...a) / 0.36) * 100)}%`;
+  sPeakBar.style.background = color;
+
+  const h = entropyOf(a);
+  sEnt.textContent = h.toFixed(3);
+  sEntBar.style.width = `${Math.max(8, (h / maxEntropy) * 100)}%`;
+  sEntBar.style.background = color;
+
+  sSp.textContent = `${hot} of 6`;
+  sSpBar.style.width = `${(hot / 6) * 100}%`;
+  sSpBar.style.background = color;
+
+  sTop.textContent = ranked.map(pair => names[pair[1]]).join("  ");
+  sTop.style.color = color;
+  sTop.style.fontSize = "22px";
+
+  pills.forEach((el, i) => {
+    const rank = rankOf.has(i) ? rankOf.get(i) : -1;
+    const dominant = rank === 0 && peaked;
+    el.style.borderColor = rank >= 0 ? color : "#e4ddd2";
+    el.style.background = dominant ? SOFT[top] : "#fff";
+    el.style.opacity = rank >= 0 ? "1" : "0.55";
+    el.querySelector("b").style.color = dominant ? color : "inherit";
+    el.querySelector("span").textContent = rank >= 0 ? `top ${rank + 1}` : a[i].toFixed(3);
+  });
+}
 
 render(playing ? 0 : 0.8);
 if (!playing) slider.value = "80";
